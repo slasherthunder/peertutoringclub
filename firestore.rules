@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isTutor() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/tutors/$(request.auth.uid));
+    }
+
+    // Tutors collection rules
+    match /tutors/{tutorId} {
+      // Allow public read access to tutors collection
+      allow read: if true;
+      allow write: if false; // Only admin can write
+      
+      // Allow tutors to write their own profile
+      allow write: if isAuthenticated() && isOwner(tutorId);
+
+      // Profile image subcollection rules
+      match /profileImage/{chunkId} {
+        // Allow public read access to tutor profile images
+        allow read: if true;
+        // Allow tutors to write their own profile image chunks
+        allow write: if isAuthenticated() && isOwner(tutorId);
+      }
+    }
+
+    // Sessions collection rules
+    match /sessions/{sessionId} {
+      // Allow public read/write access to sessions collection
+      allow read, write: if true;
+      
+      // Allow authenticated users to create sessions
+      allow create: if isAuthenticated();
+      
+      // Allow tutors to read and update their sessions
+      allow read, update: if isAuthenticated() && (
+        resource.data.tutorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
+      );
+    }
+
+    // Meeting Requests collection rules
+    match /meetingRequests/{requestId} {
+      // Allow authenticated users to create requests
+      allow create: if isAuthenticated();
+      
+      // Allow tutors to read and update requests assigned to them
+      allow read, update: if isAuthenticated() && (
+        resource.data.tutorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
+      );
+    }
+
+    // Allow public read access to tutor profile images
+    match /tutors/{tutorId}/profileImage/{imageId} {
+      allow read: if true;
+      allow write: if false; // Only admin can write
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 
